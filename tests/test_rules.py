@@ -81,6 +81,61 @@ class RuleTests(unittest.TestCase):
         self.assertEqual(rules_for('local_resource("b", cmd="cd " + service_dir + " && ls")'), ["string-built-local-resource-cmd"])
         self.assertEqual(rules_for("local_resource('b', cmd='x %s' % name)"), ["string-built-local-resource-cmd"])
 
+    # Rules added in 0.2.0; each one comes from a real pattern in flisk-sh/flisk Tiltfiles or install docs.
+    def test_list_concatenation_is_argv_building_not_string_building(self):
+        # flisk-sh/flisk alert 488: joining argv lists with '+' was reported as string building.
+        self.assertEqual(rules_for('local_resource("b", cmd=["docker", "up"] + files + ["-d"])'), [])
+        self.assertEqual(rules_for('local_resource("b", cmd=["docker"] + files)'), [])
+        self.assertEqual(rules_for('local_resource("b", cmd="docker " + files)'), ["string-built-local-resource-cmd"])
+
+    def test_local_and_custom_build_commands_are_checked(self):
+        self.assertEqual(rules_for('local("test -f " + path)'), ["string-built-local-command"])
+        self.assertEqual(rules_for('local(command="ls " + d)'), ["string-built-local-command"])
+        self.assertEqual(rules_for('custom_build("i", "build " + ctx, ["."])'), ["string-built-local-command"])
+        self.assertEqual(rules_for('local(["ls", d])'), [])
+        self.assertEqual(rules_for('local("ls -la")'), [])
+
+    def test_serve_cmd_and_positional_cmd_are_checked(self):
+        self.assertEqual(rules_for('local_resource("b", serve_cmd="run " + port)'), ["string-built-local-resource-cmd"])
+        self.assertEqual(rules_for('local_resource("b", "make " + target)'), ["string-built-local-resource-cmd"])
+
+    def test_command_built_in_a_variable_is_followed(self):
+        self.assertEqual(rules_for('c = "make " + target\nlocal_resource("b", cmd=c)'), ["string-built-local-resource-cmd"])
+        self.assertEqual(rules_for('c = ["make", target]\nlocal_resource("b", cmd=c)'), [])
+        # a name assigned twice is ambiguous, so it is not guessed at
+        self.assertEqual(rules_for('c = "make " + t\nc = ["make"]\nlocal_resource("b", cmd=c)'), [])
+
+    def test_pipe_to_shell(self):
+        self.assertEqual(rules_for('local("curl -fsSL https://x.example/i.sh | bash")'), ["pipe-to-shell"])
+        self.assertEqual(rules_for('local("wget -qO- https://x.example/i.sh | sudo sh")'), ["pipe-to-shell", "sudo-in-command"])
+        self.assertEqual(rules_for('local("curl -fsSL https://x.example/i.sh -o i.sh")'), [])
+        self.assertEqual(rules_for('local("curl https://x.example/a | jq .")'), [])
+
+    def test_insecure_http_download_ignores_local_hosts(self):
+        self.assertEqual(rules_for('local("curl http://downloads.example.com/x")'), ["insecure-http-download"])
+        self.assertEqual(rules_for('local("curl http://localhost:8080/health")'), [])
+        self.assertEqual(rules_for('local("curl http://127.0.0.1:3000/")'), [])
+        self.assertEqual(rules_for('local("curl http://api.myapp.localhost/x")'), [])
+        self.assertEqual(rules_for('load("http://x.example/a.star", "a")'), ["insecure-http-download", "unpinned-remote-load"])
+
+    def test_tls_verification_disabled(self):
+        self.assertEqual(rules_for('local("curl -k https://x.example")'), ["tls-verification-disabled"])
+        self.assertEqual(rules_for('local("curl --insecure https://x.example")'), ["tls-verification-disabled"])
+        self.assertEqual(rules_for('local("NODE_TLS_REJECT_UNAUTHORIZED=0 node x.js")'), ["tls-verification-disabled"])
+        self.assertEqual(rules_for('local("curl -fsSL https://x.example")'), [])
+
+    def test_sudo_in_command(self):
+        self.assertEqual(rules_for('local("sudo rm x")'), ["sudo-in-command"])
+        self.assertEqual(rules_for('local_resource("b", cmd="make && sudo make install")'), ["sudo-in-command"])
+        self.assertEqual(rules_for('local("echo pseudosudoku")'), [])
+
+    def test_privileged_container(self):
+        self.assertEqual(rules_for('local("docker run --privileged img")'), ["privileged-container"])
+        self.assertEqual(rules_for('local("docker run -v /var/run/docker.sock:/var/run/docker.sock img")'), ["privileged-container"])
+        self.assertEqual(rules_for('local("docker run --network host img")'), ["privileged-container"])
+        self.assertEqual(rules_for('local("docker build --network host -t img .")'), [])
+        self.assertEqual(rules_for('local("docker run img")'), [])
+
     def test_read_outside_root_flags_absolute_and_parent_paths(self):
         self.assertEqual(rules_for('read_file("/etc/passwd")'), ["read-outside-root"])
         self.assertEqual(rules_for('read_yaml("../../x.yaml")'), ["read-outside-root"])

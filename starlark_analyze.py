@@ -15,7 +15,7 @@ import re
 import sys
 
 TOOL_NAME = "codeql-starlark (unofficial)"
-TOOL_VERSION = "0.1.0"
+TOOL_VERSION = "0.2.0"
 SARIF_SCHEMA = "https://json.schemastore.org/sarif-2.1.0.json"
 DEFAULT_PATTERNS = ["**/*.star", "**/Tiltfile"]
 
@@ -30,6 +30,37 @@ RULES = {
         "text": "local_resource() builds its cmd from string concatenation or formatting.",
         "level": "warning",
     },
+    "string-built-local-command": {
+        "name": "StringBuiltLocalCommand",
+        "text": "local() or custom_build() builds its command from string concatenation or formatting.",
+        # A note: local() helpers such as `test -f` are common and low risk, so they must not drown the warnings.
+        "level": "note",
+    },
+    "pipe-to-shell": {
+        "name": "PipeToShell",
+        "text": "A command downloads a script and pipes it straight into a shell.",
+        "level": "error",
+    },
+    "insecure-http-download": {
+        "name": "InsecureHttpDownload",
+        "text": "A command downloads over plain http:// from a non-local host.",
+        "level": "error",
+    },
+    "tls-verification-disabled": {
+        "name": "TlsVerificationDisabled",
+        "text": "A command turns off TLS certificate verification.",
+        "level": "error",
+    },
+    "sudo-in-command": {
+        "name": "SudoInCommand",
+        "text": "A command runs sudo, so a Tiltfile can change the host with elevated rights.",
+        "level": "warning",
+    },
+    "privileged-container": {
+        "name": "PrivilegedContainer",
+        "text": "A command starts a container with host-level access (--privileged, the Docker socket or the host network/PID namespace).",
+        "level": "warning",
+    },
     "literal-secret": {
         "name": "LiteralSecret",
         "text": "A name ending in password, secret, token or api key is assigned a string literal that looks like a credential.",
@@ -41,6 +72,24 @@ RULES = {
         "level": "warning",
     },
 }
+
+# Keyword arguments that are executed by a shell (string) or exec'd directly (list).
+LOCAL_RESOURCE_CMD_KWARGS = {"cmd", "serve_cmd", "cmd_bat", "serve_cmd_bat"}
+# Calls whose command argument is a sink: (call name, keyword, positional index or None).
+COMMAND_CALLS = {"local": ("command", 0), "custom_build": ("command", 1)}
+
+PIPE_TO_SHELL = re.compile(r"\b(curl|wget)\b[^|]*\|\s*(sudo\s+)?(ba|z|da|k)?sh\b")
+LOCAL_HOST = r"(localhost|127\.|0\.0\.0\.0|\[::1\]|host\.docker\.internal|([a-z0-9-]+\.)*localhost|([a-z0-9-]+\.)+local\b)"
+HTTP_DOWNLOAD = re.compile(r"\b(curl|wget)\b[^|;&]*\bhttp://(?!" + LOCAL_HOST + ")", re.IGNORECASE)
+TLS_OFF = re.compile(
+    r"(\bcurl\b[^|;&]*\s(-k|--insecure)\b|--no-check-certificate|--tlsv1(\.0|\.1)?\b|NODE_TLS_REJECT_UNAUTHORIZED=0"
+    r"|GIT_SSL_NO_VERIFY|\bnpm\s+config\s+set\s+strict-ssl\s+false|--trusted-host|PYTHONHTTPSVERIFY=0)"
+)
+SUDO = re.compile(r"(^|[\s;&|(])sudo(\s|$)")
+# `docker build --network host` only shares the network for the build, so host networking counts for run/create only.
+PRIVILEGED = re.compile(
+    r"(--privileged\b|/var/run/docker\.sock|\b(run|create)\b[^|;&]*--(network|net)[= ]host\b|--pid[= ]host\b)"
+)
 
 FILE_READERS = {"read_file", "read_yaml", "read_json", "read_csv", "listdir"}
 # The secret word must END the name: API_TOKEN and db_password match, SECRET_PATH, SECRET_PROVIDER and
@@ -91,20 +140,59 @@ def is_string_built(expr):
     return _builds_string(expr) and has_dynamic_part(expr)
 
 
+def contains_list(expr):
+    """True when a '+' chain joins argument lists, which is argv building and not string building."""
+    if isinstance(expr, (ast.List, ast.Tuple)):
+        return True
+    if isinstance(expr, ast.BinOp) and isinstance(expr.op, ast.Add):
+        return contains_list(expr.left) or contains_list(expr.right)
+    return False
+
+
+def string_pieces(expr):
+    """Every string literal inside an expression, so a rule can read the command text it ends up in."""
+    return " ".join(n.value for n in ast.walk(expr) if isinstance(n, ast.Constant) and isinstance(n.value, str))
+
+
 def _builds_string(expr):
     if isinstance(expr, ast.JoinedStr):
         return True
     if isinstance(expr, ast.BinOp) and isinstance(expr.op, (ast.Add, ast.Mod)):
-        return True
+        return not (isinstance(expr.op, ast.Add) and contains_list(expr))
     if isinstance(expr, ast.Call) and isinstance(expr.func, ast.Attribute) and expr.func.attr == "format":
         return True
     return False
 
 
 class Checker(ast.NodeVisitor):
-    def __init__(self, relpath):
+    def __init__(self, relpath, assignments=None):
         self.relpath = relpath
         self.findings = []
+        # name -> value, only for names assigned exactly once in the file, so `cmd = "x " + y` is followed into local_resource(cmd=cmd).
+        self.assignments = assignments or {}
+
+    def resolve(self, expr):
+        """Follow a single-assignment variable one step to the expression it was built from."""
+        if isinstance(expr, ast.Name) and expr.id in self.assignments:
+            return self.assignments[expr.id]
+        return expr
+
+    def check_command(self, node, string_rule, label):
+        """Run every command rule on one command expression (the argument a shell or exec will run)."""
+        expr = self.resolve(node)
+        if is_string_built(expr):
+            self.report(string_rule, node, f"{label} is built from a string; pass a list of arguments instead.")
+        text = string_pieces(expr)
+        if PIPE_TO_SHELL.search(text):
+            self.report("pipe-to-shell", node, f"{label} pipes a download into a shell; download, verify a checksum, then run.")
+        if HTTP_DOWNLOAD.search(text):
+            self.report("insecure-http-download", node, f"{label} downloads over http://; use https:// and verify a checksum.")
+        if TLS_OFF.search(text):
+            self.report("tls-verification-disabled", node, f"{label} disables TLS certificate verification.")
+        if SUDO.search(text):
+            self.report("sudo-in-command", node, f"{label} runs sudo; print the command for the user to run instead.")
+        if PRIVILEGED.search(text):
+            self.report("privileged-container", node, f"{label} starts a container with host-level access.")
 
     def report(self, rule_id, node, message):
         self.findings.append(
@@ -123,13 +211,25 @@ class Checker(ast.NodeVisitor):
 
         if name == "load" and isinstance(first, ast.Constant) and isinstance(first.value, str):
             label = first.value
+            if label.startswith("http://"):
+                self.report("insecure-http-download", node, f"load('{label}') fetches over http://; use https://.")
             if label.startswith(REMOTE_PREFIXES) and not COMMIT_PIN.search(label):
                 self.report("unpinned-remote-load", node, f"load('{label}') is not pinned to a commit or sha256.")
 
         if name == "local_resource":
             for kw in node.keywords:
-                if kw.arg == "cmd" and is_string_built(kw.value):
-                    self.report("string-built-local-resource-cmd", kw.value, "cmd is built from a string; pass a list of arguments instead.")
+                if kw.arg in LOCAL_RESOURCE_CMD_KWARGS:
+                    self.check_command(kw.value, "string-built-local-resource-cmd", f"{kw.arg}")
+            if len(args) > 1:
+                self.check_command(args[1], "string-built-local-resource-cmd", "cmd")
+
+        if name in COMMAND_CALLS:
+            keyword, index = COMMAND_CALLS[name]
+            for kw in node.keywords:
+                if kw.arg == keyword:
+                    self.check_command(kw.value, "string-built-local-command", f"{name}() {keyword}")
+            if len(args) > index and not any(kw.arg == keyword for kw in node.keywords):
+                self.check_command(args[index], "string-built-local-command", f"{name}() {keyword}")
 
         if name in FILE_READERS and isinstance(first, ast.Constant) and isinstance(first.value, str):
             target = first.value
@@ -152,13 +252,29 @@ class Checker(ast.NodeVisitor):
 
 
 
+def single_assignments(tree):
+    """Map each name that is assigned exactly once (anywhere in the file) to its value."""
+    counts = {}
+    values = {}
+    for node in ast.walk(tree):
+        targets = []
+        if isinstance(node, ast.Assign):
+            targets = [(t.id, node.value) for t in node.targets if isinstance(t, ast.Name)]
+        elif isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name):
+            counts[node.target.id] = counts.get(node.target.id, 0) + 2
+        for name, value in targets:
+            counts[name] = counts.get(name, 0) + 1
+            values[name] = value
+    return {name: values[name] for name, count in counts.items() if count == 1 and name in values}
+
+
 def analyze_source(source, relpath):
     """Return (findings, parse_error). parse_error is a string or None."""
     try:
         tree = ast.parse(source, filename=relpath)
     except SyntaxError as err:
         return [], f"{err.msg} at line {err.lineno}"
-    checker = Checker(relpath)
+    checker = Checker(relpath, single_assignments(tree))
     checker.visit(tree)
     return checker.findings, None
 
