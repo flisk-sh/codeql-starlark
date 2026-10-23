@@ -1,0 +1,45 @@
+name: CodeQL Starlark (unofficial)
+description: Unofficial community Starlark checks that upload SARIF to GitHub Code scanning. Not made or endorsed by GitHub or the CodeQL team.
+
+inputs:
+  patterns:
+    description: Space-separated globs, relative to the repository root.
+    required: false
+    default: "**/*.star **/Tiltfile"
+  category:
+    description: SARIF category shown in Code scanning. Keep it distinct from other analyzers.
+    required: false
+    default: /language:starlark
+  fail-on-findings:
+    description: Set to "true" to fail the step when the analyzer reports any result. Report only by default.
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    # The analyzer runs from this action's own checkout, so a caller pinned to a full commit SHA runs exactly that commit.
+    - name: Analyze
+      shell: bash
+      env:
+        PATTERNS: ${{ inputs.patterns }}
+        FAIL_ON_FINDINGS: ${{ inputs.fail-on-findings }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        set -f # keep the globs literal; the analyzer expands them
+        args=()
+        for pattern in $PATTERNS; do
+          args+=(--pattern "$pattern")
+        done
+        if [ "$FAIL_ON_FINDINGS" = "true" ]; then
+          args+=(--fail-on-findings)
+        fi
+        python3 "$ACTION_PATH/starlark_analyze.py" --root . --output codeql-starlark.sarif "${args[@]}"
+
+    - name: Upload SARIF
+      if: ${{ always() && hashFiles('codeql-starlark.sarif') != '' }}
+      uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+      with:
+        sarif_file: codeql-starlark.sarif
+        category: ${{ inputs.category }}

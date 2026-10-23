@@ -19,7 +19,7 @@ Starlark is a restricted subset of Python, so the analyzer parses files with Pyt
 
 ## Use it in a repository
 
-Pin the reusable workflow to a full commit SHA:
+Add a job that checks out your repository and runs the action, pinned to a full commit SHA:
 
 ```yaml
 name: 🔬 Starlark
@@ -34,17 +34,22 @@ permissions:
 
 jobs:
   starlark:
-    uses: flisk-sh/codeql-starlark/.github/workflows/codeql-starlark.yml@<full commit SHA>
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       security-events: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: flisk-sh/codeql-starlark@<full commit SHA>
 ```
 
 Inputs:
 
 - `patterns`: space-separated globs. Default `**/*.star **/Tiltfile`.
 - `category`: SARIF category in Code scanning. Default `/language:starlark`.
-- `fail-on-findings`: fail the job on any result. Default `false`, report only.
+- `fail-on-findings`: set to `"true"` to fail the step on any result. Default `"false"`, report only.
 
 ## Run it locally
 
