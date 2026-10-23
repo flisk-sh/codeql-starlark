@@ -1,0 +1,8 @@
+load("https://example.com/ext/helpers.star", "helper")
+load("https://example.com/ext/pinned.star@" + "x", "other")
+API_TOKEN = "abc123"
+local_resource("build", cmd="make " + target)
+local_resource("lint", cmd="echo {}".format(name))
+config = read_file("/etc/passwd")
+secrets = read_yaml("../../outside.yaml")
+k8s_yaml(password="hunter2")

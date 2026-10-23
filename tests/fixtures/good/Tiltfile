@@ -1,0 +1,6 @@
+load("https://example.com/ext/helpers.star@0123456789abcdef0123456789abcdef01234567", "helper")
+load("//tools:pinned.star", "tool")
+API_TOKEN = os.environ.get("API_TOKEN", "")
+local_resource("build", cmd=["make", target])
+config = read_file("deploy/config.yaml")
+k8s_yaml(password=os.environ["DB_PASSWORD"])
