@@ -4,6 +4,8 @@
 
 Static checks for Starlark files (`Tiltfile`, `*.star`) that write [SARIF 2.1.0](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html), so the results appear under Code scanning next to CodeQL.
 
+**Published on the GitHub Marketplace:** [Starlark Analyzer for Code Scanning (unofficial)](https://github.com/marketplace/actions/starlark-analyzer-for-code-scanning-unofficial). Current release: [v0.2.1](https://github.com/flisk-sh/codeql-starlark/releases/tag/v0.2.1).
+
 CodeQL does not analyze Starlark. This project fills that gap.
 
 ## Rules
@@ -48,7 +50,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: flisk-sh/codeql-starlark@<full commit SHA>
+      - uses: flisk-sh/codeql-starlark@d7626243e510170baf13c53d2895c12576823b0a # v0.2.1
 ```
 
 Inputs:
