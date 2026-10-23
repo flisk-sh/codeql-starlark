@@ -1,10 +1,10 @@
 # codeql-starlark
 
-> **Unofficial community project.** Not made, endorsed or supported by GitHub or the CodeQL team. It does not use CodeQL: it parses Starlark itself and reports through SARIF.
+> **Community project.** Not made, endorsed or supported by GitHub or the CodeQL team. It does not use CodeQL: it parses Starlark itself and reports through SARIF.
 
 Static checks for Starlark files (`Tiltfile`, `*.star`) that write [SARIF 2.1.0](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html), so the results appear under Code scanning next to CodeQL.
 
-**Published on the GitHub Marketplace:** [Starlark Analyzer for Code Scanning (unofficial)](https://github.com/marketplace/actions/starlark-analyzer-for-code-scanning-unofficial). Current release: [v0.2.1](https://github.com/flisk-sh/codeql-starlark/releases/tag/v0.2.1).
+**Published on the GitHub Marketplace:** [Starlark Analyzer for Code Scanning](https://github.com/marketplace/actions/starlark-analyzer-for-code-scanning). Current release: [v0.2.1](https://github.com/flisk-sh/codeql-starlark/releases/tag/v0.2.1).
 
 CodeQL does not analyze Starlark. This project fills that gap.
 

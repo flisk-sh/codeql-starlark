@@ -195,7 +195,7 @@ class SarifTests(unittest.TestCase):
             doc = json.load(handle)
         run = doc["runs"][0]
         self.assertEqual(doc["version"], "2.1.0")
-        self.assertEqual(run["tool"]["driver"]["name"], "codeql-starlark (unofficial)")
+        self.assertEqual(run["tool"]["driver"]["name"], "codeql-starlark")
         self.assertTrue(run["results"])
         for result in run["results"]:
             self.assertIn("starlarkFindingHash/v1", result["partialFingerprints"])
