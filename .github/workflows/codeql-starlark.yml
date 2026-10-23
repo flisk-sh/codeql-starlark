@@ -2,11 +2,11 @@
 # Callers:
 #   jobs:
 #     starlark:
-#       uses: flisk-sh/starlark-analyze/.github/workflows/starlark-analyze.yml@<full commit SHA>
+#       uses: flisk-sh/codeql-starlark/.github/workflows/codeql-starlark.yml@<full commit SHA>
 #       permissions:
 #         contents: read
 #         security-events: write
-name: 🔬 Starlark analyze
+name: 🔬 CodeQL Starlark (unofficial)
 
 on:
   workflow_call:
@@ -48,7 +48,7 @@ jobs:
       - name: Check out the analyzer
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          repository: flisk-sh/starlark-analyze
+          repository: flisk-sh/codeql-starlark
           ref: ${{ github.workflow_sha }}
           path: .starlark-analyze
           persist-credentials: false

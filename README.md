@@ -1,4 +1,6 @@
-# starlark-analyze
+# codeql-starlark
+
+> **Unofficial community project.** Not made, endorsed or supported by GitHub or the CodeQL team. It does not use CodeQL: it parses Starlark itself and reports through SARIF.
 
 Static checks for Starlark files (`Tiltfile`, `*.star`) that write [SARIF 2.1.0](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html), so the results appear under Code scanning next to CodeQL.
 
@@ -32,7 +34,7 @@ permissions:
 
 jobs:
   starlark:
-    uses: flisk-sh/starlark-analyze/.github/workflows/starlark-analyze.yml@<full commit SHA>
+    uses: flisk-sh/codeql-starlark/.github/workflows/codeql-starlark.yml@<full commit SHA>
     permissions:
       contents: read
       security-events: write

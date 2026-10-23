@@ -14,7 +14,7 @@ import os
 import re
 import sys
 
-TOOL_NAME = "starlark-analyze"
+TOOL_NAME = "codeql-starlark (unofficial)"
 TOOL_VERSION = "0.1.0"
 SARIF_SCHEMA = "https://json.schemastore.org/sarif-2.1.0.json"
 DEFAULT_PATTERNS = ["**/*.star", "**/Tiltfile"]
