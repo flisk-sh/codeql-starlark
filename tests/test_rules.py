@@ -47,6 +47,40 @@ class RuleTests(unittest.TestCase):
         self.assertEqual(rules_for('API_TOKEN = ""'), [])
         self.assertEqual(rules_for('API_TOKEN = os.environ["API_TOKEN"]'), [])
 
+    # False positives seen on flisk-sh/flisk (alerts 479-484): each case below was flagged before the rule was tightened.
+    def test_load_alias_keyword_is_not_a_secret(self):
+        self.assertEqual(rules_for('load("./secrets_generator.star", _Secrets="SecretsGenerator")'), [])
+
+    def test_secret_word_in_the_middle_of_a_name_is_not_a_secret(self):
+        self.assertEqual(rules_for('k8s_yaml(secret_path="/services/user")'), [])
+        self.assertEqual(rules_for("DEFAULT_SECRET_PROVIDER = 'env-file'"), [])
+        self.assertEqual(rules_for('SECRET_NAME_PREFIX = "app"'), [])
+
+    def test_env_placeholder_is_not_a_secret(self):
+        self.assertEqual(rules_for('DB_PASSWORD = "${DB_PASSWORD}"'), [])
+        self.assertEqual(rules_for('DB_PASSWORD = "$DB_PASSWORD"'), [])
+
+    def test_sentence_or_path_value_is_not_a_secret(self):
+        self.assertEqual(rules_for('JWT_SECRET = "JWT_SECRET is not set. Run it"'), [])
+        self.assertEqual(rules_for('TOKEN_FILE = "x"\ntoken = "/run/secrets/token"'), [])
+
+    def test_real_looking_credentials_are_still_flagged(self):
+        self.assertEqual(rules_for('db_password = "s3cr3t"'), ["literal-secret"])
+        self.assertEqual(rules_for('JWT_SECRET = "abc123def456"'), ["literal-secret"])
+        self.assertEqual(rules_for('api_key = "AKIAIOSFODNN7EXAMPLE"'), ["literal-secret"])
+
+    def test_secret_rule_is_a_warning_not_an_error(self):
+        self.assertEqual(sa.RULES["literal-secret"]["level"], "warning")
+
+    def test_cmd_made_only_of_literals_is_not_flagged(self):
+        self.assertEqual(rules_for('local_resource("b", cmd="make " + "all")'), [])
+        self.assertEqual(rules_for('local_resource("b", cmd="make %s" % "all")'), [])
+        self.assertEqual(rules_for('local_resource("b", cmd="make {}".format("all"))'), [])
+
+    def test_cmd_with_a_variable_is_still_flagged(self):
+        self.assertEqual(rules_for('local_resource("b", cmd="cd " + service_dir + " && ls")'), ["string-built-local-resource-cmd"])
+        self.assertEqual(rules_for("local_resource('b', cmd='x %s' % name)"), ["string-built-local-resource-cmd"])
+
     def test_read_outside_root_flags_absolute_and_parent_paths(self):
         self.assertEqual(rules_for('read_file("/etc/passwd")'), ["read-outside-root"])
         self.assertEqual(rules_for('read_yaml("../../x.yaml")'), ["read-outside-root"])

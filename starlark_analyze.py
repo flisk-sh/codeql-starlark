@@ -32,8 +32,8 @@ RULES = {
     },
     "literal-secret": {
         "name": "LiteralSecret",
-        "text": "A secret-looking name is assigned a string literal.",
-        "level": "error",
+        "text": "A name ending in password, secret, token or api key is assigned a string literal that looks like a credential.",
+        "level": "warning",
     },
     "read-outside-root": {
         "name": "ReadOutsideRoot",
@@ -43,9 +43,39 @@ RULES = {
 }
 
 FILE_READERS = {"read_file", "read_yaml", "read_json", "read_csv", "listdir"}
-SECRET_NAME = re.compile(r"(password|passwd|secret|token|api[_-]?key)", re.IGNORECASE)
+# The secret word must END the name: API_TOKEN and db_password match, SECRET_PATH, SECRET_PROVIDER and
+# JWT_SECRET_MISSING_MESSAGE do not (they name a path, a provider and a message).
+SECRET_NAME = re.compile(r"(password|passwd|secret|token|api[_-]?key|private[_-]?key)$", re.IGNORECASE)
 COMMIT_PIN = re.compile(r"[0-9a-f]{40}|sha256[=:][0-9a-f]{64}", re.IGNORECASE)
 REMOTE_PREFIXES = ("http://", "https://", "git://", "ssh://")
+
+
+def looks_like_credential(expr):
+    """A string literal that could be a credential, not a placeholder, path or sentence."""
+    if not (isinstance(expr, ast.Constant) and isinstance(expr.value, str)):
+        return False
+    value = expr.value
+    if value == "" or any(ch.isspace() for ch in value):
+        return False  # empty, or prose such as an error message
+    if "$" in value or value.startswith(("/", "./", "../", "<", "{{", "%(")):
+        return False  # env placeholder like ${DB_PASSWORD}, a path, or a template
+    return True
+
+
+def has_dynamic_part(expr):
+    """True when a string expression mixes in anything that is not a plain string literal."""
+    if isinstance(expr, ast.Constant):
+        return False
+    if isinstance(expr, ast.JoinedStr):
+        return any(isinstance(v, ast.FormattedValue) and has_dynamic_part(v.value) for v in expr.values)
+    if isinstance(expr, ast.BinOp):
+        return has_dynamic_part(expr.left) or has_dynamic_part(expr.right)
+    if isinstance(expr, (ast.Tuple, ast.List)):
+        return any(has_dynamic_part(e) for e in expr.elts)
+    if isinstance(expr, ast.Call) and isinstance(expr.func, ast.Attribute) and expr.func.attr == "format":
+        parts = list(expr.args) + [kw.value for kw in expr.keywords]
+        return any(has_dynamic_part(e) for e in parts)
+    return True
 
 
 def call_name(node):
@@ -57,7 +87,11 @@ def call_name(node):
 
 
 def is_string_built(expr):
-    """True for '+' concatenation, '%' or str.format() building a string."""
+    """True for '+' concatenation, '%' or str.format() that mixes in a non-literal piece."""
+    return _builds_string(expr) and has_dynamic_part(expr)
+
+
+def _builds_string(expr):
     if isinstance(expr, ast.JoinedStr):
         return True
     if isinstance(expr, ast.BinOp) and isinstance(expr.op, (ast.Add, ast.Mod)):
@@ -102,22 +136,20 @@ class Checker(ast.NodeVisitor):
             if target.startswith("/") or ".." in target.replace("\\", "/").split("/"):
                 self.report("read-outside-root", node, f"{name}('{target}') reads outside the project root.")
 
-        for kw in node.keywords:
-            if kw.arg and SECRET_NAME.search(kw.arg) and self._is_nonempty_str(kw.value):
+        # load("f.star", _Secrets="Secrets") binds an alias; the keyword is a symbol name, not a value.
+        for kw in node.keywords if name != "load" else []:
+            if kw.arg and SECRET_NAME.search(kw.arg) and looks_like_credential(kw.value):
                 self.report("literal-secret", kw.value, f"'{kw.arg}' is set to a string literal.")
 
         self.generic_visit(node)
 
     def visit_Assign(self, node):
-        if self._is_nonempty_str(node.value):
+        if looks_like_credential(node.value):
             for target in node.targets:
                 if isinstance(target, ast.Name) and SECRET_NAME.search(target.id):
                     self.report("literal-secret", node.value, f"'{target.id}' is assigned a string literal.")
         self.generic_visit(node)
 
-    @staticmethod
-    def _is_nonempty_str(expr):
-        return isinstance(expr, ast.Constant) and isinstance(expr.value, str) and expr.value != ""
 
 
 def analyze_source(source, relpath):

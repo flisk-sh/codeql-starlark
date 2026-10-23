@@ -11,8 +11,8 @@ CodeQL does not analyze Starlark. This project fills that gap.
 | Rule | Level | What it flags |
 | --- | --- | --- |
 | `unpinned-remote-load` | warning | `load()` of a `http(s)`, `git` or `ssh` URL with no commit SHA or `sha256` in it |
-| `string-built-local-resource-cmd` | warning | `local_resource(cmd=...)` built with `+`, `%`, `.format()` or an f-string |
-| `literal-secret` | error | a `password`, `secret`, `token` or `api_key` name set to a non-empty string literal |
+| `string-built-local-resource-cmd` | warning | `local_resource(cmd=...)` built with `+`, `%`, `.format()` or an f-string that mixes in a non-literal value. Joining two literals is not flagged |
+| `literal-secret` | warning | a name that **ends** in `password`, `secret`, `token`, `api_key` or `private_key` set to a credential-looking string. Not flagged: empty values, values with spaces, env placeholders such as `${DB_PASSWORD}`, paths, `load()` aliases, and names like `SECRET_PATH` or `SECRET_PROVIDER` |
 | `read-outside-root` | warning | `read_file`, `read_yaml`, `read_json`, `read_csv` or `listdir` on an absolute path or one containing `..` |
 
 Starlark is a restricted subset of Python, so the analyzer parses files with Python's `ast` module. It needs no Starlark engine and no dependencies. A file the parser rejects is reported as a notification, not skipped.
