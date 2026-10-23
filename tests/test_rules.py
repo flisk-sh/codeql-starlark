@@ -111,6 +111,22 @@ class RuleTests(unittest.TestCase):
         # a name assigned twice is ambiguous, so it is not guessed at
         self.assertEqual(rules_for('c = "make " + t\nc = ["make"]\nlocal_resource("b", cmd=c)'), [])
 
+    def test_shell_quoted_values_are_safe_to_splice(self):
+        # Tilt ships a shlex plugin: shlex.quote(x) is one shell word whatever x contains.
+        self.assertEqual(rules_for('local_resource("b", cmd="cd " + shlex.quote(d) + " && make")'), [])
+        self.assertEqual(rules_for('local_resource("b", cmd="cd " + quote(d))'), [])
+        self.assertEqual(rules_for('local_resource("b", cmd="cd " + shlex.quote(d) + " && " + other)'), ["string-built-local-resource-cmd"])
+
+    def test_exclude_skips_matching_files(self):
+        root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, root)
+        os.makedirs(os.path.join(root, "golden"))
+        for name in ("a.star", os.path.join("golden", "b.star")):
+            with open(os.path.join(root, name), "w", encoding="utf-8") as handle:
+                handle.write('local("ls " + d)')
+        self.assertEqual(sa.discover(root, ["**/*.star"]), ["a.star", "golden/b.star"])
+        self.assertEqual(sa.discover(root, ["**/*.star"], ["golden/**"]), ["a.star"])
+
     def test_pipe_to_shell(self):
         self.assertEqual(rules_for('local("curl -fsSL https://x.example/i.sh | bash")'), ["pipe-to-shell"])
         self.assertEqual(rules_for('local("wget -qO- https://x.example/i.sh | sudo sh")'), ["pipe-to-shell", "sudo-in-command"])

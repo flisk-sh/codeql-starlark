@@ -10,6 +10,10 @@ inputs:
     description: Space-separated globs, relative to the repository root.
     required: false
     default: "**/*.star **/Tiltfile"
+  exclude:
+    description: Space-separated globs to skip, for example generated golden files such as "**/__tests__/**".
+    required: false
+    default: ""
   category:
     description: SARIF category shown in Code scanning. Keep it distinct from other analyzers.
     required: false
@@ -27,6 +31,7 @@ runs:
       shell: bash
       env:
         PATTERNS: ${{ inputs.patterns }}
+        EXCLUDES: ${{ inputs.exclude }}
         FAIL_ON_FINDINGS: ${{ inputs.fail-on-findings }}
         ACTION_PATH: ${{ github.action_path }}
       run: |
@@ -35,6 +40,9 @@ runs:
         args=()
         for pattern in $PATTERNS; do
           args+=(--pattern "$pattern")
+        done
+        for pattern in $EXCLUDES; do
+          args+=(--exclude "$pattern")
         done
         if [ "$FAIL_ON_FINDINGS" = "true" ]; then
           args+=(--fail-on-findings)

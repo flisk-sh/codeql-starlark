@@ -113,9 +113,16 @@ def looks_like_credential(expr):
     return True
 
 
+def is_shell_quoted(expr):
+    """shlex.quote(x) / quote(x) makes one shell word out of x, so splicing it into a command is safe."""
+    return isinstance(expr, ast.Call) and call_name(expr) == "quote" and not expr.keywords and len(expr.args) == 1
+
+
 def has_dynamic_part(expr):
     """True when a string expression mixes in anything that is not a plain string literal."""
     if isinstance(expr, ast.Constant):
+        return False
+    if is_shell_quoted(expr):
         return False
     if isinstance(expr, ast.JoinedStr):
         return any(isinstance(v, ast.FormattedValue) and has_dynamic_part(v.value) for v in expr.values)
@@ -281,13 +288,17 @@ def analyze_source(source, relpath):
     return checker.findings, None
 
 
-def discover(root, patterns):
+def discover(root, patterns, excludes=()):
     seen = set()
     for pattern in patterns:
         for path in glob.glob(os.path.join(root, pattern), recursive=True):
             if os.path.isfile(path):
                 seen.add(os.path.relpath(path, root).replace(os.sep, "/"))
-    return sorted(seen)
+    skipped = set()
+    for pattern in excludes:
+        for path in glob.glob(os.path.join(root, pattern), recursive=True):
+            skipped.add(os.path.relpath(path, root).replace(os.sep, "/"))
+    return sorted(seen - skipped)
 
 
 def fingerprint(rule_id, relpath, message):
@@ -367,12 +378,13 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Check Starlark files and write SARIF.")
     parser.add_argument("--root", default=".", help="project root to scan (default: current directory)")
     parser.add_argument("--pattern", action="append", dest="patterns", help="glob relative to root; repeatable")
+    parser.add_argument("--exclude", action="append", dest="excludes", help="glob relative to root to skip (for example generated golden files); repeatable")
     parser.add_argument("--output", default="starlark-analyze.sarif", help="SARIF file to write")
     parser.add_argument("--fail-on-findings", action="store_true", help="exit 1 when any result is reported")
     args = parser.parse_args(argv)
 
     root = os.path.abspath(args.root)
-    files = discover(root, args.patterns or DEFAULT_PATTERNS)
+    files = discover(root, args.patterns or DEFAULT_PATTERNS, args.excludes or [])
     sarif = build_sarif(root, files)
     with open(args.output, "w", encoding="utf-8") as handle:
         json.dump(sarif, handle, indent=2)

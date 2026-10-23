@@ -56,13 +56,14 @@ jobs:
 Inputs:
 
 - `patterns`: space-separated globs. Default `**/*.star **/Tiltfile`.
+- `exclude`: space-separated globs to skip, for example generated golden files (`**/__tests__/**`). Default none.
 - `category`: SARIF category in Code scanning. Default `/language:starlark`.
 - `fail-on-findings`: set to `"true"` to fail the step on any result. Default `"false"`, report only.
 
 ## Run it locally
 
 ```bash
-python3 starlark_analyze.py --root path/to/project --output starlark-analyze.sarif
+python3 starlark_analyze.py --root path/to/project --exclude '**/__tests__/**' --output starlark-analyze.sarif
 python3 -m unittest tests.test_rules -v
 ```
 
