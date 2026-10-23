@@ -106,6 +106,8 @@ def looks_like_credential(expr):
     value = expr.value
     if value == "" or any(ch.isspace() for ch in value):
         return False  # empty, or prose such as an error message
+    if re.match(r"(id|src|source|env)=", value):
+        return False  # docker_build(secret='id=npm') names a BuildKit secret, it is not the secret
     if "$" in value or value.startswith(("/", "./", "../", "<", "{{", "%(")):
         return False  # env placeholder like ${DB_PASSWORD}, a path, or a template
     return True

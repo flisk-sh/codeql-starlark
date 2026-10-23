@@ -64,6 +64,12 @@ class RuleTests(unittest.TestCase):
         self.assertEqual(rules_for('JWT_SECRET = "JWT_SECRET is not set. Run it"'), [])
         self.assertEqual(rules_for('TOKEN_FILE = "x"\ntoken = "/run/secrets/token"'), [])
 
+    def test_buildkit_secret_reference_is_not_a_secret(self):
+        # seen on tilt-dev/tilt: docker_build("img", "ctx", secret='id=shibboleth')
+        self.assertEqual(rules_for('docker_build("img", "ctx", secret="id=shibboleth")'), [])
+        self.assertEqual(rules_for('docker_build("img", "ctx", secret="id=npm,src=.npmrc")'), [])
+        self.assertEqual(rules_for('docker_build("img", "ctx", secret="hunter2")'), ["literal-secret"])
+
     def test_real_looking_credentials_are_still_flagged(self):
         self.assertEqual(rules_for('db_password = "s3cr3t"'), ["literal-secret"])
         self.assertEqual(rules_for('JWT_SECRET = "abc123def456"'), ["literal-secret"])

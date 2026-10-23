@@ -1,5 +1,9 @@
-name: CodeQL Starlark (unofficial)
+name: Starlark Analyzer for Code Scanning (unofficial)
 description: Unofficial community Starlark checks that upload SARIF to GitHub Code scanning. Not made or endorsed by GitHub or the CodeQL team.
+
+branding:
+  icon: shield
+  color: blue
 
 inputs:
   patterns:
