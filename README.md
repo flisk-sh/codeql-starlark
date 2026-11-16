@@ -66,7 +66,7 @@ If no files match after applying `patterns` and `exclude`, the analyzer logs a w
 
 ```bash
 python3 starlark_analyze.py --root path/to/project --exclude '**/__tests__/**' --output starlark-analyze.sarif
-python3 -m unittest tests.test_rules -v
+python3 -m unittest discover -s tests -t . -v
 ```
 
 Python 3.9 or newer is enough. There are no dependencies.
