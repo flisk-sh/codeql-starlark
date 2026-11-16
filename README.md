@@ -60,14 +60,18 @@ Inputs:
 - `category`: SARIF category in Code scanning. Default `/language:starlark`.
 - `fail-on-findings`: set to `"true"` to fail the step on any result. Default `"false"`, report only.
 
+If no files match after applying `patterns` and `exclude`, the analyzer logs a warning and writes an empty SARIF report. The scan still succeeds.
+
 ## Run it locally
 
 ```bash
 python3 starlark_analyze.py --root path/to/project --exclude '**/__tests__/**' --output starlark-analyze.sarif
-python3 -m unittest tests.test_rules -v
+python3 -m unittest discover -s tests -t . -v
 ```
 
 Python 3.9 or newer is enough. There are no dependencies.
+
+`--root` must point to an existing directory. If it names a missing path or a file, the CLI exits with status 2 before writing a report.
 
 ## Status
 
