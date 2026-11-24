@@ -81,8 +81,10 @@ COMMAND_CALLS = {"local": ("command", 0), "custom_build": ("command", 1)}
 PIPE_TO_SHELL = re.compile(r"\b(curl|wget)\b[^|]*\|\s*(sudo\s+)?(ba|z|da|k)?sh\b")
 LOCAL_HOST = r"(localhost|127\.|0\.0\.0\.0|\[::1\]|host\.docker\.internal|([a-z0-9-]+\.)*localhost|([a-z0-9-]+\.)+local\b)"
 HTTP_DOWNLOAD = re.compile(r"\b(curl|wget)\b[^|;&]*\bhttp://(?!" + LOCAL_HOST + ")", re.IGNORECASE)
+# --tlsv1.2 and --tlsv1.3 pin a secure TLS minimum, so the version tail must not end before a ".":
+# a bare \b sees the boundary ahead of ".2" and would flag them with the insecure 1.0/1.1 floors.
 TLS_OFF = re.compile(
-    r"(\bcurl\b[^|;&]*\s(-k|--insecure)\b|--no-check-certificate|--tlsv1(\.0|\.1)?\b|NODE_TLS_REJECT_UNAUTHORIZED=0"
+    r"(\bcurl\b[^|;&]*\s(-k|--insecure)\b|--no-check-certificate|--tlsv1(\.0|\.1)?\b(?!\.)|NODE_TLS_REJECT_UNAUTHORIZED=0"
     r"|GIT_SSL_NO_VERIFY|\bnpm\s+config\s+set\s+strict-ssl\s+false|--trusted-host|PYTHONHTTPSVERIFY=0)"
 )
 SUDO = re.compile(r"(^|[\s;&|(])sudo(\s|$)")

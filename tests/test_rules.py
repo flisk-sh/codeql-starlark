@@ -146,6 +146,14 @@ class RuleTests(unittest.TestCase):
         self.assertEqual(rules_for('local("NODE_TLS_REJECT_UNAUTHORIZED=0 node x.js")'), ["tls-verification-disabled"])
         self.assertEqual(rules_for('local("curl -fsSL https://x.example")'), [])
 
+    def test_tls_version_floors_flag_only_tls_10_and_11(self):
+        # --tlsv1.2 and --tlsv1.3 set a secure minimum; the old pattern ended before the "."
+        # and reported them as if verification were off.
+        for flag in ("--tlsv1", "--tlsv1.0", "--tlsv1.1"):
+            self.assertEqual(rules_for(f'local("curl {flag} https://x.example")'), ["tls-verification-disabled"], flag)
+        for flag in ("--tlsv1.2", "--tlsv1.3"):
+            self.assertEqual(rules_for(f'local("curl {flag} https://x.example")'), [], flag)
+
     def test_sudo_in_command(self):
         self.assertEqual(rules_for('local("sudo rm x")'), ["sudo-in-command"])
         self.assertEqual(rules_for('local_resource("b", cmd="make && sudo make install")'), ["sudo-in-command"])
