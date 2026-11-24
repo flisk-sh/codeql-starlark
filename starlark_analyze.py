@@ -174,8 +174,9 @@ def _builds_string(expr):
 
 
 class Checker(ast.NodeVisitor):
-    def __init__(self, relpath, assignments=None):
+    def __init__(self, relpath, source, assignments=None):
         self.relpath = relpath
+        self.source_lines = source.replace("\r\n", "\n").replace("\r", "\n").split("\n")
         self.findings = []
         # name -> value, only for names assigned exactly once in the file, so `cmd = "x " + y` is followed into local_resource(cmd=cmd).
         self.assignments = assignments or {}
@@ -204,12 +205,15 @@ class Checker(ast.NodeVisitor):
             self.report("privileged-container", node, f"{label} starts a container with host-level access.")
 
     def report(self, rule_id, node, message):
+        # The AST counts UTF-8 bytes, while SARIF defaults to UTF-16 code units.
+        line = self.source_lines[node.lineno - 1].encode("utf-8")
+        prefix = line[:node.col_offset].decode("utf-8")
         self.findings.append(
             {
                 "rule": rule_id,
                 "message": message,
                 "line": node.lineno,
-                "column": node.col_offset + 1,
+                "column": len(prefix.encode("utf-16-le")) // 2 + 1,
             }
         )
 
@@ -283,7 +287,7 @@ def analyze_source(source, relpath):
         tree = ast.parse(source, filename=relpath)
     except SyntaxError as err:
         return [], f"{err.msg} at line {err.lineno}"
-    checker = Checker(relpath, single_assignments(tree))
+    checker = Checker(relpath, source, single_assignments(tree))
     checker.visit(tree)
     return checker.findings, None
 

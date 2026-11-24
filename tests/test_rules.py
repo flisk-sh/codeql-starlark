@@ -185,6 +185,19 @@ class FixtureTests(unittest.TestCase):
 
 
 class SarifTests(unittest.TestCase):
+    def test_columns_count_utf16_units_before_a_finding(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = os.path.join(root, "Tiltfile")
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write('local_resource("plain", cmd="make " + task)\n')
+                handle.write('local_resource("caf\u00e9\U0001f600", cmd="make " + task)\n')
+            run = sa.build_sarif(root, ["Tiltfile"])["runs"][0]
+
+        self.assertEqual(
+            [result["locations"][0]["physicalLocation"]["region"] for result in run["results"]],
+            [{"startLine": 1, "startColumn": 29}, {"startLine": 2, "startColumn": 30}],
+        )
+
     def test_end_to_end_writes_valid_sarif_shape(self):
         out = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, out)
